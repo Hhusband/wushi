@@ -89,5 +89,14 @@
      "sudo /var/packages/ContainerManager/target/usr/bin/docker exec -i classroom-ai-db-1 psql -U postgres -d classroom_ai"
    ```
 
-3. **镜像**：部署前后可用 `docker tag classroom-ai-app:latest classroom-ai-app:rollback`
-   保留上一版镜像，需要时 `docker tag` 回去再 `up -d`（不重新构建）。
+3. **镜像**：`deploy.sh` 在构建前会自动把当前运行镜像打上 `classroom-ai-app:rollback` 标签。
+   新版有问题时切回旧镜像（不重新构建，几十秒可恢复）：
+
+   ```bash
+   ssh admin-01@10.200.223.1 'cd /volume1/docker/classroom-ai && \
+     sudo /var/packages/ContainerManager/target/usr/bin/docker tag classroom-ai-app:rollback classroom-ai-app:latest && \
+     sudo /var/packages/ContainerManager/target/usr/bin/docker-compose up -d --force-recreate app'
+   ```
+
+   注意：运行容器不会自动用上新构建的镜像，`check.sh` 若提示「运行容器仍是旧镜像」，
+   说明构建成功但还没重启，重启/重新部署后生效。

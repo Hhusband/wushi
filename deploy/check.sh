@@ -33,10 +33,11 @@ warn() { echo "  ⚠️  $*"; WARN=1; }
 # 参与比对的路径过滤（与 deploy.sh 的 --exclude 保持一致）
 FILTER=(-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*'
         -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*'
+        -not -path './backups/*'
         -not -name '.env' -not -name '.env.local' -not -name '.DS_Store'
-        -not -name '*.tsbuildinfo')
+        -not -name '*.tsbuildinfo' -not -name '._*')
 # 远程执行时需要保留引号，避免远端 shell 展开通配符（如 ./exports/* 会撑爆 find 参数）
-RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo'"
+RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo' -not -name '._*'"
 
 echo "== 1/3 本地仓库 ↔ NAS 源码目录 =="
 (
@@ -83,11 +84,17 @@ CODE="$(curl -s -o /dev/null -m 8 -w '%{http_code}' "$APP_URL/" || true)"
 [ "$CODE" = "200" ] && ok "HTTP $APP_URL/ -> 200" || bad "HTTP $APP_URL/ -> ${CODE:-超时}"
 
 STATUS="$(nas_ssh \
-  "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER inspect $NAS_CONTAINER --format '{{.State.Status}}|{{.State.Health.Status}}|{{.Config.Image}}|{{.State.StartedAt}}' 2>/dev/null")"
-say "  容器: $STATUS"
+  "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER inspect $NAS_CONTAINER --format '{{.State.Status}}|{{.State.Health.Status}}|{{.Config.Image}}|{{.State.StartedAt}}|{{.Image}}' 2>/dev/null")"
+say "  容器: ${STATUS%|*}"
 IMAGE_INFO="$(nas_ssh \
   "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER images --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' $NAS_IMAGE 2>/dev/null | head -1")"
 say "  镜像: $IMAGE_INFO"
+CIMG_ID="${STATUS##*|}"
+LATEST_ID="$(nas_ssh \
+  "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER images -q $NAS_IMAGE 2>/dev/null | head -1")"
+if [ -n "$LATEST_ID" ] && [ -n "$CIMG_ID" ] && [ "$LATEST_ID" != "$CIMG_ID" ]; then
+  warn "运行容器仍是旧镜像（$(printf '%s' "$CIMG_ID" | sed 's/^sha256://' | cut -c1-12)），最新构建镜像为 $(printf '%s' "$LATEST_ID" | cut -c1-12)，重新部署/重启后生效"
+fi
 
 echo
 if [ "$FAIL" = "0" ] && [ "$WARN" = "0" ]; then

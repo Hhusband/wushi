@@ -39,15 +39,17 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 # 参与同步的文件范围 / 排除规则（与 check.sh 保持一致）
 EXCL_TAR=(--exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./.claude
-          --exclude=./exports --exclude=./deploy --exclude='*.tsbuildinfo'
-          --exclude=.DS_Store --exclude=./.env --exclude=./.env.local)
+          --exclude=./exports --exclude=./deploy --exclude=./backups --exclude='*.tsbuildinfo'
+          --exclude=.DS_Store --exclude=./.env --exclude=./.env.local
+          --exclude='._*')
 # 参与同步/比对的文件范围（与 check.sh 保持一致）
 FILTER=(-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*'
         -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*'
+        -not -path './backups/*'
         -not -name '.env' -not -name '.env.local' -not -name '.DS_Store'
-        -not -name '*.tsbuildinfo')
+        -not -name '*.tsbuildinfo' -not -name '._*')
 # 远端执行时保留单引号，避免远端 shell 展开通配符
-RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo'"
+RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo' -not -name '._*'"
 
 local_files() { ( cd "$LOCAL_DIR" && find . -type f "${FILTER[@]}" | sed 's|^\./||' | LC_ALL=C sort ); }
 
@@ -70,7 +72,7 @@ fi
 # ---------------------------------------------------------------- 同步源码
 echo "==> 同步源码  $LOCAL_DIR  ->  ${NAS_USER}@${NAS_HOST}:${NAS_DIR}"
 local_files > "$TMP/manifest.txt"
-tar czf - "${EXCL_TAR[@]}" -C "$LOCAL_DIR" . | nas "cd $NAS_DIR && tar xzf -"
+COPYFILE_DISABLE=1 tar --no-xattrs -czf - "${EXCL_TAR[@]}" -C "$LOCAL_DIR" . | nas "cd $NAS_DIR && tar xzf -"
 echo "    文件数: $(wc -l < "$TMP/manifest.txt" | tr -d ' ')"
 
 # 清理 NAS 上本地已删除的文件（只在不影响 .env / exports / node_modules 的范围内）
@@ -88,6 +90,15 @@ if [ "$MODE" = "sync" ]; then
 fi
 
 # ---------------------------------------------------------------- 构建 + 重启
+# 构建前把当前运行镜像打个回滚标签，万一新版有问题可快速切回
+PREV_IMG="$(nas "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER inspect --format '{{.Image}}' $NAS_CONTAINER 2>/dev/null" || true)"
+if [ -n "$PREV_IMG" ]; then
+  if nas "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER tag $PREV_IMG classroom-ai-app:rollback" >/dev/null 2>&1; then
+    echo "==> 已保留上一版镜像 classroom-ai-app:rollback（${PREV_IMG#sha256:}）"
+  else
+    echo "!! 警告：未能打回滚标签，回滚需按镜像 ID 手动 docker tag"
+  fi
+fi
 echo "==> 在 NAS 上重新构建并重启（docker compose up -d --build），预计 5-15 分钟..."
 nas "cd $NAS_DIR && printf '%s\n' '$NAS_PASS' | sudo -S $NAS_COMPOSE up -d --build 2>&1 | tail -25"
 
