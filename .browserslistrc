@@ -1,0 +1,4 @@
+# Target older Safari on iPad — ensures optional chaining, nullish coalescing,
+# and other modern syntax are compiled down to compatible alternatives.
+iOS >= 12
+Safari >= 12

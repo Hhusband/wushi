@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model TeacherAccess {
+  id          String    @id @default(uuid())
+  accessCode  String    @unique @map("access_code") @db.VarChar(50)
+  teacherName String    @map("teacher_name") @db.VarChar(100)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  @@map("teacher_access")
+}
+
+model Lesson {
+  id                     String   @id @default(uuid())
+  teacherId              String   @map("teacher_id") @db.VarChar(100)
+  subject                String   @default("语文") @db.VarChar(20)
+  grade                  String   @db.VarChar(20)
+  className              String   @map("class_name") @db.VarChar(50)
+  lessonNumber           String   @map("lesson_number") @db.VarChar(20)
+  lessonName             String   @map("lesson_name") @db.VarChar(200)
+  coreQuestion           String   @map("core_question") @db.Text
+  followUpQuestions      Json     @default("[]") @map("follow_up_questions")
+  discussionRequirements String   @default("") @map("discussion_requirements") @db.Text
+  status                 String   @default("draft") @db.VarChar(20)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  currentLessons CurrentLesson[]
+  sessions       StudentSession[]
+  submissions    Submission[]
+  reports        LessonReport[]
+  agentLogs      AgentLog[]
+
+  @@index([teacherId])
+  @@index([grade, className])
+  @@map("lessons")
+}
+
+model CurrentLesson {
+  id         String    @id @default(uuid())
+  lessonId   String    @map("lesson_id")
+  teacherId  String    @map("teacher_id") @db.VarChar(100)
+  grade      String    @db.VarChar(20)
+  className  String    @map("class_name") @db.VarChar(50)
+  status     String    @default("active") @db.VarChar(20)
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  lesson       Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  sessions     StudentSession[]
+  reports      LessonReport[]
+  submissions  Submission[]
+
+  @@index([grade, className, status])
+  @@index([status])
+  @@map("current_lessons")
+}
+
+model StudentSession {
+  id              String   @id @default(uuid())
+  currentLessonId String   @map("current_lesson_id")
+  lessonId        String   @map("lesson_id")
+  grade           String   @db.VarChar(20)
+  className       String   @map("class_name") @db.VarChar(50)
+  groupNumber     Int      @map("group_number")
+  groupName       String   @map("group_name") @db.VarChar(100)
+  status          String   @default("active") @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  currentLesson CurrentLesson @relation(fields: [currentLessonId], references: [id], onDelete: Cascade)
+  lesson        Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  submission    Submission?
+  agentLogs     AgentLog[]
+
+  @@unique([currentLessonId, groupNumber])
+  @@map("student_sessions")
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  sessionId  String   @map("session_id")
+  role       String   @db.VarChar(20)
+  authorName String?  @map("author_name") @db.VarChar(100)
+  content    String   @db.Text
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  session StudentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("messages")
+}
+
+model Submission {
+  id              String   @id @default(uuid())
+  sessionId       String   @unique @map("session_id")
+  lessonId        String   @map("lesson_id")
+  currentLessonId String   @map("current_lesson_id")
+  groupName       String   @map("group_name") @db.VarChar(100)
+  mainPoints      Json     @default("[]") @map("main_points")
+  evidence        Json     @default("[]")
+  conclusions     String   @default("") @db.Text
+  questions       String   @default("") @db.Text
+  submittedAt     DateTime @default(now()) @map("submitted_at")
+
+  session       StudentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lesson        Lesson         @relation(fields: [lessonId], references: [id])
+  currentLesson CurrentLesson  @relation(fields: [currentLessonId], references: [id])
+
+  @@map("submissions")
+}
+
+model LessonReport {
+  id                    String   @id @default(uuid())
+  lessonId              String   @map("lesson_id")
+  currentLessonId       String   @unique @map("current_lesson_id")
+  overallSummary        String   @default("") @map("overall_summary") @db.Text
+  topGroups             Json     @default("[]") @map("top_groups")
+  strugglingGroups      Json     @default("[]") @map("struggling_groups")
+  commonMisconceptions  Json     @default("[]") @map("common_misconceptions")
+  teachingSuggestions   String   @default("") @map("teaching_suggestions") @db.Text
+  followUpQuestions     Json     @default("[]") @map("follow_up_questions")
+  boardSuggestions      String   @default("") @map("board_suggestions") @db.Text
+  homeworkSuggestions   String   @default("") @map("homework_suggestions") @db.Text
+  keywordCloud          Json     @default("[]") @map("keyword_cloud")
+  opinionDistribution   Json     @default("[]") @map("opinion_distribution")
+  discussionDepthScores Json     @default("[]") @map("discussion_depth_scores")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  lesson        Lesson        @relation(fields: [lessonId], references: [id])
+  currentLesson CurrentLesson @relation(fields: [currentLessonId], references: [id])
+
+  @@map("lesson_reports")
+}
+
+model AgentLog {
+  id         String   @id @default(uuid())
+  agentType  String   @map("agent_type") @db.VarChar(20)
+  sessionId  String?  @map("session_id")
+  lessonId   String?  @map("lesson_id")
+  action     String   @db.VarChar(100)
+  input      String   @default("") @db.Text
+  output     String   @default("") @db.Text
+  tokensUsed Int      @default(0) @map("tokens_used")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  session StudentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  lesson  Lesson?         @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+  @@index([agentType, createdAt])
+  @@index([sessionId])
+  @@map("agent_logs")
+}

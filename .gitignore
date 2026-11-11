@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# ---- 吾师 - 部署配置（含 NAS 密码，禁止入库）----
+deploy/nas.env
+
+# 本地数据库备份
+/backups/
