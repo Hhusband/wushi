@@ -89,9 +89,9 @@ say "  容器: ${STATUS%|*}"
 IMAGE_INFO="$(nas_ssh \
   "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER images --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' $NAS_IMAGE 2>/dev/null | head -1")"
 say "  镜像: $IMAGE_INFO"
-CIMG_ID="${STATUS##*|}"
+CIMG_ID="${STATUS##*|}"; CIMG_ID="${CIMG_ID#sha256:}"
 LATEST_ID="$(nas_ssh \
-  "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER images -q $NAS_IMAGE 2>/dev/null | head -1")"
+  "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER images -q $NAS_IMAGE 2>/dev/null | head -1")"; LATEST_ID="${LATEST_ID#sha256:}"
 if [ -n "$LATEST_ID" ] && [ -n "$CIMG_ID" ] && [ "$LATEST_ID" != "$CIMG_ID" ]; then
   warn "运行容器仍是旧镜像（$(printf '%s' "$CIMG_ID" | sed 's/^sha256://' | cut -c1-12)），最新构建镜像为 $(printf '%s' "$LATEST_ID" | cut -c1-12)，重新部署/重启后生效"
 fi

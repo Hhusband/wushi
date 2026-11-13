@@ -38,6 +38,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x entrypoint.sh
 
+# 统一源码权限：构建上下文里个别文件可能是 0600（由某些编辑器/同步工具创建），
+# 会被原样带进镜像；运行时以 nextjs 用户（uid 1001）读取 src 会 permission denied。
+RUN chmod -R a+rX ./src ./prisma ./public ./tools ./server.ts
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000

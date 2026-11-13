@@ -26,7 +26,7 @@ OUT="$OUT_DIR/files_${STAMP}.tar.gz"
 
 echo "==> 备份 NAS 文件（uploads/ + exports/）-> $OUT"
 ssh "${SSH_OPTS[@]}" "$NAS_USER@$NAS_HOST" \
-  "cd $NAS_DIR && printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER run --rm -v \"\$PWD/uploads:/src/uploads:ro\" -v \"\$PWD/exports:/src/exports:ro\" -w /src alpine:3.20 tar czf - uploads exports" \
+  "cd $NAS_DIR && mkdir -p uploads exports && printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER run --rm -v \"\$PWD/uploads:/src/uploads:ro\" -v \"\$PWD/exports:/src/exports:ro\" -w /src alpine:3.20 tar czf - uploads exports" \
   > "$OUT"
 
 echo "    大小: $(du -h "$OUT" | cut -f1)"
