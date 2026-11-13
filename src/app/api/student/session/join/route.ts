@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { getActiveRound } from "@/lib/rounds"
 import { SUBJECT_GUIDANCE } from "@/lib/constants"
 import { STUDENT_WELCOME_MESSAGE } from "@/prompts/student"
+import { normalizeClassName, normalizeGrade } from "@/lib/utils"
 
 export async function POST(request: Request) {
   try {
@@ -33,8 +34,8 @@ export async function POST(request: Request) {
       session = await sessionRepo.create({
         currentLessonId: currentLesson.id,
         lessonId: currentLesson.lessonId,
-        grade,
-        className,
+        grade: normalizeGrade(grade),
+        className: normalizeClassName(className),
         groupNumber: Number(groupNumber),
         groupName,
       })
