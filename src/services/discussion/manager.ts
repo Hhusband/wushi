@@ -2,13 +2,43 @@ import { StudentAgent } from "@/agents/student-agent"
 import { prisma } from "@/lib/prisma"
 import { STUDENT_WELCOME_MESSAGE } from "@/prompts/student"
 import { SUBJECT_GUIDANCE } from "@/lib/constants"
+import { ensureFirstRound, getActiveRound } from "@/lib/rounds"
 import type { ChatMessage, MessageData } from "@/types"
+
+type RoundContext = {
+  id: string
+  seq: number
+  question: string
+  requirements: string
+  allowSubmit: boolean
+}
 
 export class DiscussionManager {
   private sessionId: string
 
   constructor(sessionId: string) {
     this.sessionId = sessionId
+  }
+
+  /** 取该会话所属课堂的当前轮次（没有轮次时补建第 1 轮，兼容旧数据） */
+  private async getRoundContext(currentLessonId: string): Promise<RoundContext | null> {
+    let round = await getActiveRound(currentLessonId)
+    if (!round) {
+      const last = await prisma.discussionRound.findFirst({
+        where: { currentLessonId },
+        orderBy: { seq: "desc" },
+      })
+      if (last) round = last
+      else round = await ensureFirstRound(currentLessonId)
+    }
+    if (!round) return null
+    return {
+      id: round.id,
+      seq: round.seq,
+      question: round.question,
+      requirements: round.requirements,
+      allowSubmit: round.allowSubmit,
+    }
   }
 
   async getOrCreateAgent(): Promise<StudentAgent> {
@@ -19,6 +49,7 @@ export class DiscussionManager {
     if (!session) throw new Error("会话不存在")
 
     const subject = session.lesson.subject || "语文"
+    const round = await this.getRoundContext(session.currentLessonId)
 
     return new StudentAgent(this.sessionId, {
       subject,
@@ -29,18 +60,25 @@ export class DiscussionManager {
       coreQuestion: session.lesson.coreQuestion,
       followUpQuestions: session.lesson.followUpQuestions as string[],
       discussionRequirements: session.lesson.discussionRequirements,
+      roundId: round?.id || null,
+      roundSeq: round?.seq,
+      roundQuestion: round?.question,
+      roundRequirements: round?.requirements,
+      allowSubmit: round?.allowSubmit ?? true,
     })
   }
 
   async handleMessage(
     content: string,
     authorName?: string
-  ): Promise<{ userMessage: MessageData; aiResponse: MessageData; autoSubmitted?: boolean }> {
+  ): Promise<{ userMessage: MessageData; aiResponse: MessageData; autoSubmitted?: boolean; roundId?: string | null }> {
     const agent = await this.getOrCreateAgent()
     const session = await prisma.studentSession.findUnique({
       where: { id: this.sessionId },
     })
     if (!session) throw new Error("会话不存在")
+
+    const round = await this.getRoundContext(session.currentLessonId)
 
     // Get recent history
     const recentMessages = await prisma.message.findMany({
@@ -67,6 +105,7 @@ export class DiscussionManager {
     const aiMessage = await prisma.message.create({
       data: {
         sessionId: this.sessionId,
+        roundId: round?.id || null,
         role: "assistant",
         content: response.content,
         metadata: (response.data || {}) as any,
@@ -84,9 +123,10 @@ export class DiscussionManager {
       session.lessonId
     )
 
-    // Auto-submit if AI generated a summary (discussion ended)
+    // Auto-submit if AI generated a summary (discussion ended) — 仅当本轮允许总结提交
     let autoSubmitted = false
-    if (response.content.includes("【讨论总结】")) {
+    const allowSubmit = round?.allowSubmit ?? true
+    if (allowSubmit && response.content.includes("【讨论总结】")) {
       autoSubmitted = true
       try {
         await this.confirmSubmission()
@@ -100,6 +140,7 @@ export class DiscussionManager {
       userMessage: userMessage as unknown as MessageData,
       aiResponse: aiMessage as unknown as MessageData,
       autoSubmitted,
+      roundId: round?.id || null,
     }
   }
 
@@ -112,13 +153,15 @@ export class DiscussionManager {
 
     const subject = session.lesson.subject || "语文"
     const guidance = SUBJECT_GUIDANCE[subject] || SUBJECT_GUIDANCE["语文"]
+    const round = await this.getRoundContext(session.currentLessonId)
+    const question = (round?.question || "").trim() || session.lesson.coreQuestion
 
     return STUDENT_WELCOME_MESSAGE
-      .replace("{{groupName}}", session.groupName)
-      .replace("{{lessonName}}", session.lesson.lessonName)
-      .replace("{{coreQuestion}}", session.lesson.coreQuestion)
-      .replace("{{subject}}", subject)
-      .replace("{{welcomeHint}}", guidance.welcomeHint)
+      .replaceAll("{{groupName}}", session.groupName)
+      .replaceAll("{{lessonName}}", session.lesson.lessonName)
+      .replaceAll("{{coreQuestion}}", question)
+      .replaceAll("{{subject}}", subject)
+      .replaceAll("{{welcomeHint}}", guidance.welcomeHint)
   }
 
   async generateSummary(): Promise<{ summary: MessageData }> {
@@ -127,6 +170,8 @@ export class DiscussionManager {
       where: { id: this.sessionId },
     })
     if (!session) throw new Error("会话不存在")
+
+    const round = await this.getRoundContext(session.currentLessonId)
 
     // Update session status
     await prisma.studentSession.update({
@@ -144,6 +189,7 @@ export class DiscussionManager {
     const summaryMessage = await prisma.message.create({
       data: {
         sessionId: this.sessionId,
+        roundId: round?.id || null,
         role: "assistant",
         content: response.content,
         metadata: { type: "summary" },
@@ -182,8 +228,10 @@ export class DiscussionManager {
     const conclusionsText = this.extractSection(summaryContent, ["结论", "小组结论"])
     const questionsText = this.extractSection(summaryContent, ["疑问", "问题", "遗留问题"])
 
-    await prisma.submission.create({
-      data: {
+    // sessionId 唯一：已提交过的会话用 upsert 更新（支持多轮讨论后重新提交）
+    await prisma.submission.upsert({
+      where: { sessionId: this.sessionId },
+      create: {
         sessionId: this.sessionId,
         lessonId: session.lessonId,
         currentLessonId: session.currentLessonId,
@@ -192,6 +240,13 @@ export class DiscussionManager {
         evidence: this.toArray(evidenceText) as any,
         conclusions: conclusionsText,
         questions: questionsText,
+      },
+      update: {
+        mainPoints: this.toArray(mainPointsText) as any,
+        evidence: this.toArray(evidenceText) as any,
+        conclusions: conclusionsText,
+        questions: questionsText,
+        submittedAt: new Date(),
       },
     })
 

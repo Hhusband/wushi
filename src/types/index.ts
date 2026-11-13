@@ -57,6 +57,7 @@ export interface SessionData {
 export interface MessageData {
   id: string
   sessionId: string
+  roundId?: string | null
   role: "student" | "assistant" | "system"
   authorName?: string
   content: string
@@ -89,6 +90,12 @@ export interface DashboardData {
   keywordCloud: { word: string; count: number }[]
   opinionDistribution: { opinion: string; count: number; groups: string[] }[]
   activeGroupsRanking: { groupName: string; messageCount: number }[]
+  // V1.6 分轮讨论 + 课堂资料
+  rounds?: RoundData[]
+  activeRoundId?: string | null
+  filterRoundId?: string | null
+  allowSubmit?: boolean
+  materials?: MaterialData[]
 }
 
 export interface DashboardSession {
@@ -99,6 +106,43 @@ export interface DashboardSession {
   messageCount: number
   lastActiveAt: string
   depthScore: number
+}
+
+// ---- V1.6 分轮讨论 ——
+export interface RoundData {
+  id: string
+  currentLessonId: string
+  seq: number
+  title: string
+  question: string
+  requirements: string
+  status: "pending" | "active" | "ended"
+  allowSubmit: boolean
+  summary: string
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string
+  messageCount?: number
+  materialCount?: number
+}
+
+// ---- V1.6 课堂资料 ----
+export type MaterialKind = "image" | "pdf" | "docx" | "doc"
+
+export interface MaterialData {
+  id: string
+  currentLessonId: string
+  roundId: string | null
+  batchId: string | null
+  kind: MaterialKind
+  title: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+  sortOrder: number
+  pushedAt: string | null
+  createdAt: string
+  url: string
 }
 
 // ---- Report ----

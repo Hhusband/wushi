@@ -39,17 +39,17 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 # 参与同步的文件范围 / 排除规则（与 check.sh 保持一致）
 EXCL_TAR=(--exclude=./node_modules --exclude=./.next --exclude=./.git --exclude=./.claude
-          --exclude=./exports --exclude=./deploy --exclude=./backups --exclude='*.tsbuildinfo'
+          --exclude=./exports --exclude=./uploads --exclude=./deploy --exclude=./backups --exclude='*.tsbuildinfo'
           --exclude=.DS_Store --exclude=./.env --exclude=./.env.local
           --exclude='._*')
 # 参与同步/比对的文件范围（与 check.sh 保持一致）
 FILTER=(-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*'
         -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*'
-        -not -path './backups/*'
+        -not -path './backups/*' -not -path './uploads/*'
         -not -name '.env' -not -name '.env.local' -not -name '.DS_Store'
         -not -name '*.tsbuildinfo' -not -name '._*')
 # 远端执行时保留单引号，避免远端 shell 展开通配符
-RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo' -not -name '._*'"
+RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './uploads/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo' -not -name '._*'"
 
 local_files() { ( cd "$LOCAL_DIR" && find . -type f "${FILTER[@]}" | sed 's|^\./||' | LC_ALL=C sort ); }
 

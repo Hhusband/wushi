@@ -64,3 +64,20 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans, Arial, Helvetica, sans-serif);
 }
+
+/* docx-preview 容器：去掉灰底，页面用白纸卡片样式 */
+.docx-host .docx-wrapper {
+  background: transparent;
+  padding: 0;
+}
+
+.docx-host .docx-wrapper > section.docx {
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  background: #fff;
+}
+
+.docx-host img {
+  max-width: 100%;
+  height: auto;
+}

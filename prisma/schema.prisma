@@ -55,14 +55,61 @@ model CurrentLesson {
   endedAt    DateTime? @map("ended_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
-  lesson       Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lesson       Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   sessions     StudentSession[]
   reports      LessonReport[]
   submissions  Submission[]
+  rounds       DiscussionRound[]
+  materials    Material[]
 
   @@index([grade, className, status])
   @@index([status])
   @@map("current_lessons")
+}
+
+model DiscussionRound {
+  id              String    @id @default(uuid())
+  currentLessonId String    @map("current_lesson_id")
+  seq             Int
+  title           String    @default("") @db.VarChar(200)
+  question        String    @db.Text
+  requirements    String    @default("") @db.Text
+  status          String    @default("active") @db.VarChar(20)
+  allowSubmit     Boolean   @default(false) @map("allow_submit")
+  summary         String    @default("") @db.Text
+  startedAt       DateTime? @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  currentLesson CurrentLesson @relation(fields: [currentLessonId], references: [id], onDelete: Cascade)
+  materials     Material[]
+  messages      Message[]
+
+  @@unique([currentLessonId, seq])
+  @@index([currentLessonId, status])
+  @@map("discussion_rounds")
+}
+
+model Material {
+  id              String    @id @default(uuid())
+  currentLessonId String    @map("current_lesson_id")
+  roundId         String?   @map("round_id")
+  batchId         String?   @map("batch_id")
+  kind            String    @db.VarChar(10)
+  title           String    @default("") @db.VarChar(200)
+  fileName        String    @map("file_name") @db.VarChar(255)
+  storedName      String    @map("stored_name") @db.VarChar(255)
+  mimeType        String    @map("mime_type") @db.VarChar(120)
+  sizeBytes       Int       @map("size_bytes")
+  sortOrder       Int       @default(0) @map("sort_order")
+  pushedAt        DateTime? @map("pushed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  currentLesson CurrentLesson    @relation(fields: [currentLessonId], references: [id], onDelete: Cascade)
+  round         DiscussionRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+
+  @@index([currentLessonId, pushedAt])
+  @@map("materials")
 }
 
 model StudentSession {
@@ -90,15 +137,18 @@ model StudentSession {
 model Message {
   id         String   @id @default(uuid())
   sessionId  String   @map("session_id")
+  roundId    String?  @map("round_id")
   role       String   @db.VarChar(20)
   authorName String?  @map("author_name") @db.VarChar(100)
   content    String   @db.Text
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  session StudentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session StudentSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  round   DiscussionRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
 
   @@index([sessionId, createdAt])
+  @@index([roundId])
   @@map("messages")
 }
 

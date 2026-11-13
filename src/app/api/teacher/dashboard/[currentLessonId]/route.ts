@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { toRoundDTO } from "@/lib/rounds"
+import { toMaterialDTO } from "@/lib/uploads"
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ currentLessonId: string }> }
 ) {
   const { currentLessonId } = await params
+  const roundIdParam = new URL(request.url).searchParams.get("roundId")
 
   const currentLesson = await prisma.currentLesson.findUnique({
     where: { id: currentLessonId },
@@ -22,16 +25,49 @@ export async function GET(
     where: { currentLessonId },
   })
 
-  const totalMessages = await prisma.message.count({
-    where: { session: { currentLessonId } },
+  const rounds = await prisma.discussionRound.findMany({
+    where: { currentLessonId },
+    orderBy: { seq: "asc" },
   })
+  const activeRound = rounds.find((r) => r.status === "active") || null
+
+  const materials = await prisma.material.findMany({
+    where: { currentLessonId },
+    orderBy: [{ createdAt: "asc" }, { sortOrder: "asc" }],
+  })
+
+  // 轮次筛选：不传 roundId 时统计整节课；传 "active" 时统计当前轮
+  let filterRoundId: string | null = null
+  if (roundIdParam === "active") filterRoundId = activeRound?.id || null
+  else if (roundIdParam) filterRoundId = roundIdParam
+
+  const messageWhere = {
+    session: { currentLessonId },
+    ...(filterRoundId ? { roundId: filterRoundId } : {}),
+  }
+
+  const totalMessages = await prisma.message.count({ where: messageWhere })
+
+  const perRoundCounts = await prisma.message.groupBy({
+    by: ["roundId"],
+    where: { session: { currentLessonId } },
+    _count: { _all: true },
+  })
+  const perRoundCountMap = new Map(perRoundCounts.map((c) => [c.roundId || "", c._count._all]))
+
+  const materialCountByRound = new Map<string, number>()
+  for (const m of materials) {
+    if (m.roundId) materialCountByRound.set(m.roundId, (materialCountByRound.get(m.roundId) || 0) + 1)
+  }
 
   // Build dashboard sessions data
   const dashboardSessions = await Promise.all(
     sessions.map(async (s) => {
-      const messageCount = await prisma.message.count({ where: { sessionId: s.id } })
+      const messageCount = await prisma.message.count({
+        where: { sessionId: s.id, ...(filterRoundId ? { roundId: filterRoundId } : {}) },
+      })
       const lastMessage = await prisma.message.findFirst({
-        where: { sessionId: s.id },
+        where: { sessionId: s.id, ...(filterRoundId ? { roundId: filterRoundId } : {}) },
         orderBy: { createdAt: "desc" },
       })
 
@@ -49,12 +85,16 @@ export async function GET(
 
   // Simple keyword extraction from messages (placeholder for NLP)
   const allMessages = await prisma.message.findMany({
-    where: { session: { currentLessonId } },
+    where: messageWhere,
     select: { content: true },
     take: 500,
   })
 
   const keywordCloud = extractKeywords(allMessages.map((m) => m.content))
+
+  const canSubmit = filterRoundId
+    ? rounds.find((r) => r.id === filterRoundId)?.allowSubmit ?? true
+    : activeRound?.allowSubmit ?? true
 
   return NextResponse.json({
     currentLesson,
@@ -65,9 +105,19 @@ export async function GET(
     sessions: dashboardSessions,
     keywordCloud,
     opinionDistribution: [],
-    activeGroupsRanking: dashboardSessions
+    activeGroupsRanking: [...dashboardSessions]
       .sort((a, b) => b.messageCount - a.messageCount)
       .map((s) => ({ groupName: s.groupName, messageCount: s.messageCount })),
+    // V1.6 分轮讨论 + 资料
+    rounds: rounds.map((r) => ({
+      ...toRoundDTO(r),
+      messageCount: perRoundCountMap.get(r.id) || 0,
+      materialCount: materialCountByRound.get(r.id) || 0,
+    })),
+    activeRoundId: activeRound?.id || null,
+    filterRoundId,
+    allowSubmit: canSubmit,
+    materials: materials.map(toMaterialDTO),
   })
 }
 

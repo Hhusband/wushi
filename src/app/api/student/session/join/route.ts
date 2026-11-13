@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { currentLessonRepo } from "@/repositories/current-lesson"
 import { sessionRepo } from "@/repositories/session"
 import { messageRepo } from "@/repositories/message"
+import { prisma } from "@/lib/prisma"
+import { getActiveRound } from "@/lib/rounds"
+import { SUBJECT_GUIDANCE } from "@/lib/constants"
 import { STUDENT_WELCOME_MESSAGE } from "@/prompts/student"
 
 export async function POST(request: Request) {
@@ -36,17 +39,30 @@ export async function POST(request: Request) {
         groupName,
       })
 
-      // Send welcome message
+      // Send welcome message（用当前轮次的问题，并归属到该轮）
+      const round =
+        (await getActiveRound(currentLesson.id)) ||
+        (await prisma.discussionRound.findFirst({
+          where: { currentLessonId: currentLesson.id },
+          orderBy: { seq: "desc" },
+        }))
+      const subject = currentLesson.lesson.subject || "语文"
+      const guidance = SUBJECT_GUIDANCE[subject] || SUBJECT_GUIDANCE["语文"]
+      const question = (round?.question || "").trim() || currentLesson.lesson.coreQuestion
+
       const welcomeMessage = STUDENT_WELCOME_MESSAGE
-        .replace("{{groupName}}", groupName)
-        .replace("{{lessonName}}", currentLesson.lesson.lessonName)
-        .replace("{{coreQuestion}}", currentLesson.lesson.coreQuestion)
+        .replaceAll("{{groupName}}", groupName)
+        .replaceAll("{{lessonName}}", currentLesson.lesson.lessonName)
+        .replaceAll("{{coreQuestion}}", question)
+        .replaceAll("{{subject}}", subject)
+        .replaceAll("{{welcomeHint}}", guidance.welcomeHint)
 
       await messageRepo.create({
         sessionId: session.id,
         role: "system",
         content: welcomeMessage,
-        metadata: { type: "welcome" },
+        metadata: { type: "welcome", roundId: round?.id || null },
+        roundId: round?.id || null,
       })
     }
 

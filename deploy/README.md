@@ -45,11 +45,13 @@
 | `./deploy/deploy.sh --sync` | 只同步源码到 NAS，不构建、不重启 |
 | `./deploy/deploy.sh` | 全量：同步源码 → NAS 上 `docker compose up -d --build` → 轮询健康检查 → 打印容器状态 |
 | `./deploy/backup-db.sh` | 备份 NAS 数据库到 `backups/`（改动 schema 前务必执行） |
+| `./deploy/backup-files.sh` | 备份 NAS 的 `uploads/`（课堂资料）与 `exports/`（导出 Excel）到 `backups/files_*.tar.gz` |
 
 完整迭代顺序：
 
 ```bash
 ./deploy/backup-db.sh          # 涉及数据库时
+./deploy/backup-files.sh       # 涉及资料/导出数据时（可选）
 ./deploy/deploy.sh             # 同步 + 构建 + 重启（中断约 20–60 秒，避开上课时间）
 ./deploy/check.sh              # 必须看到「三方完全一致 ✅」
 ```
@@ -58,8 +60,8 @@
 
 ## 三、check.sh 的三段核对
 
-1. **本地 ↔ NAS 源码目录**：逐文件 SHA-256 全量比对，116 个文件应完全一致。
-   排除：`node_modules/ .next/ .git/ .claude/ exports/ deploy/ *.tsbuildinfo .DS_Store .env*`
+1. **本地 ↔ NAS 源码目录**：逐文件 SHA-256 全量比对（约 120 个文件）应完全一致。
+   排除：`node_modules/ .next/ .git/ .claude/ exports/ uploads/ backups/ deploy/ *.tsbuildinfo .DS_Store .env*`
 2. **NAS 源码 ↔ 运行容器**：比对 `/app` 内 `src/ prisma/ public/ tools/ server.ts entrypoint.sh`。
    容器内多出本地已删除的文件 = ⚠️ 非阻断（下次部署后消失）；容器代码落后 = ❌。
 3. **运行状态**：HTTP 200 + 容器 `running/healthy` + 镜像构建时间。
@@ -68,6 +70,11 @@
 
 - **.env 只在 NAS**：生产密钥（POSTGRES_PASSWORD / JWT_SECRET / DEEPSEEK_API_KEY）不写入本地、不参与同步。
 - **exports/ 是线上数据**：课程导出 Excel 在这里，不参与同步，不要 `--delete` 它。
+- **uploads/ 是线上课堂资料**：老师上传的 Word/PDF/图片存放在 `uploads/<课堂id>/`，通过容器的
+  `./uploads:/app/uploads` 卷挂载；课堂结束时会随记录一起被程序自动清除。它不参与同步
+  （`deploy.sh` / `check.sh` 已显式排除，否则 `--sync` 的清理逻辑会误删线上资料）。
+- **上传大小限制**：PDF/Word ≤30MB、图片 ≤10MB/张、单批 ≤50MB、单批 ≤10 张图片；
+  学生端文件访问走 `/api/materials/[id]/file?k=签名`，未下发或课堂已结束时一律拒绝。
 - **schema 变更风险**：容器启动时 `docker/entrypoint.sh` 会执行
   `npx prisma db push --accept-data-loss`，改 `prisma/schema.prisma` 前必须先 `./deploy/backup-db.sh`。
 - **避开上课时间重启**：`docker compose up -d` 会重建 app 容器，中断 20–60 秒。
@@ -82,7 +89,8 @@
 ## 五、回滚
 
 1. **代码**：`git log --oneline` 找到上一个基线，`git revert`/`git checkout` 后重新 `./deploy/deploy.sh`。
-2. **数据库**：从 `backups/` 里最近的 `classroom_ai_*.sql.gz` 恢复：
+2. **数据库**：从 `backups/` 里最近的 `classroom_ai_*.sql.gz` 恢复（文件数据用
+   `backups/files_*.tar.gz` 恢复到 NAS 的 `uploads/`、`exports/`）：
 
    ```bash
    gunzip -c backups/classroom_ai_xxx.sql.gz | ssh admin-01@10.200.223.1 \

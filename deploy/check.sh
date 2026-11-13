@@ -33,11 +33,11 @@ warn() { echo "  ⚠️  $*"; WARN=1; }
 # 参与比对的路径过滤（与 deploy.sh 的 --exclude 保持一致）
 FILTER=(-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*'
         -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*'
-        -not -path './backups/*'
+        -not -path './backups/*' -not -path './uploads/*'
         -not -name '.env' -not -name '.env.local' -not -name '.DS_Store'
         -not -name '*.tsbuildinfo' -not -name '._*')
 # 远程执行时需要保留引号，避免远端 shell 展开通配符（如 ./exports/* 会撑爆 find 参数）
-RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo' -not -name '._*'"
+RFILTER="-not -path './node_modules/*' -not -path './.next/*' -not -path './.git/*' -not -path './exports/*' -not -path './uploads/*' -not -path './deploy/*' -not -path './.claude/*' -not -name '.env' -not -name '.env.local' -not -name '.DS_Store' -not -name '*.tsbuildinfo' -not -name '._*'"
 
 echo "== 1/3 本地仓库 ↔ NAS 源码目录 =="
 (

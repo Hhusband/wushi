@@ -54,3 +54,4 @@ deploy/nas.env
 access-codes.csv
 # 资料上传目录
 /uploads/
+/exports/

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { verifyToken, extractToken } from "@/lib/auth"
 import { currentLessonRepo } from "@/repositories/current-lesson"
+import { ensureFirstRound } from "@/lib/rounds"
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +22,13 @@ export async function POST(request: Request) {
       grade,
       className,
     })
+
+    // V1.6：启动课堂即建立第 1 轮讨论（问题 = 课程核心问题），保持单轮课堂行为不变
+    try {
+      await ensureFirstRound(currentLesson.id)
+    } catch (err) {
+      console.error("[rounds] ensureFirstRound failed:", err)
+    }
 
     return NextResponse.json({ currentLesson })
   } catch (e: any) {

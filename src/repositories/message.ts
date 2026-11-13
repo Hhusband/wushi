@@ -15,6 +15,7 @@ export const messageRepo = {
     authorName?: string
     content: string
     metadata?: Record<string, unknown>
+    roundId?: string | null
   }) {
     return prisma.message.create({
       data: {
@@ -23,6 +24,7 @@ export const messageRepo = {
         authorName: data.authorName || null,
         content: data.content,
         metadata: (data.metadata || {}) as any,
+        roundId: data.roundId || null,
       },
     })
   },
