@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 吾师（wushi）
 
-## Getting Started
+面向小学课堂的 AI 讨论助手：教师建课 → 学生分组用手机加入 → AI 扮演学科导师引导学生讨论 → 教师实时看到各组进度 → 课堂结束自动生成课堂评价并导出 Excel。
 
-First, run the development server:
+> ⚠️ 本仓库包含教师访问码等课堂凭据，**必须保持 Private（私有）**，不要公开。
+
+## 功能概览
+
+- **教师端**：访问码登录 / 建课（学科、年级、班级、核心问题、追问、讨论要求）/ 启动课堂 / 课堂控制台（实时看板：小组状态、发言数、深度、关键词云、AI 简报）/ 课堂报告 / 导出。
+- **学生端**：输入年级班级小组加入 → 与 AI 导师讨论（系统消息、AI 引导、讨论总结）→ 提交讨论成果。
+- **实时**：Socket.IO 推送课堂与小组更新。
+- **AI**：DeepSeek（`DEEPSEEK_API_KEY`），支持语文 / 数学 / 科学 / 道法四科引导策略。
+
+## 技术栈
+
+Next.js 16（App Router，`output: "standalone"`）+ 自定义 `server.ts`、Socket.IO、Prisma 7（PostgreSQL 16）、Redis 7、Tailwind + shadcn/ui、exceljs、jose（JWT）。
+
+## 本地开发
+
+需要 Node 22+、PostgreSQL 16、Redis 7（可用 Docker 起）。
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env        # 填写 DATABASE_URL / REDIS_URL / JWT_SECRET / DEEPSEEK_API_KEY
+npm install
+npx prisma db push          # 建表
+npm run dev                 # tsx server.ts，默认 http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 部署（NAS / Docker）
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+线上环境：Synology NAS `10.200.223.1:3003`，`docker compose` 编排 app + PostgreSQL + Redis，代码目录 `/volume1/docker/classroom-ai`。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd classroom-ai
+./deploy/check.sh           # 三方核对：本地代码 = NAS 源码 = 运行容器
+./deploy/backup-db.sh       # 备份数据库（schema 变更前必做）
+./deploy/deploy.sh --dry-run  # 预览差异
+./deploy/deploy.sh          # 同步源码 + 重建容器 + 健康检查
+```
 
-## Learn More
+细节见 [`deploy/README.md`](deploy/README.md)。要点：
 
-To learn more about Next.js, take a look at the following resources:
+- `.env` 只存在于 NAS（含生产密码），不入库、不参与同步；`exports/`、`uploads/` 是线上数据卷，不参与同步。
+- 容器启动时执行 `prisma db push --accept-data-loss`，**改 schema 前务必先备份数据库**。
+- 部署会重建容器（约 20–60 秒不可用），**避开上课时间**。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 版本与回退
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| 版本 | 说明 |
+| --- | --- |
+| `v1.4` | 教师会话恢复（2026-06-08），NAS 长期运行的基线 |
+| `v20251113` | 「20251113 版本」：V1.5 一致性核对 + 部署工具固化后的线上代码快照 |
 
-## Deploy on Vercel
+回退到某个版本：
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+git fetch --tags
+git checkout -b rollback v20251113   # 或 v1.4
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+要回退线上，再在 NAS 上执行 `./deploy/deploy.sh`（或 `docker compose up -d --build`）即可。
+
+## 目录结构
+
+```
+src/app         页面与 API 路由（teacher/ student/ api/）
+src/services    AI 讨论管理、LLM 客户端、Excel 导出
+src/agents      学生 / 教师 / 报告 Agent
+src/lib         认证、常量、Prisma/Redis、Socket
+src/repositories 数据访问层
+prisma/         数据模型（schema.prisma）
+deploy/         部署与核对脚本、备份脚本
+docker/         Dockerfile、entrypoint.sh
+tools/          访问码生成等运维脚本
+```
+
+## 迭代记录
+
+项目整体设计见工作区根目录 `DESIGN.md`；功能迭代记录见 `吾师功能迭代记录.docx`。
