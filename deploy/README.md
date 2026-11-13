@@ -73,6 +73,9 @@
 - **uploads/ 是线上课堂资料**：老师上传的 Word/PDF/图片存放在 `uploads/<课堂id>/`，通过容器的
   `./uploads:/app/uploads` 卷挂载；课堂结束时会随记录一起被程序自动清除。它不参与同步
   （`deploy.sh` / `check.sh` 已显式排除，否则 `--sync` 的清理逻辑会误删线上资料）。
+- **uploads/ 目录权限**：`uploads/`、`exports/` 是宿主机 bind mount，容器内运行用户是 nextjs (uid 1001)；
+  DSM 的 ACL 会让容器内 `chmod` 静默失败，所以 `deploy.sh` 会在部署前用 sudo 在宿主机上
+  `chmod 777 uploads exports`（不依赖它会导致上传资料报 `EACCES: mkdir /app/uploads/...`）。
 - **上传大小限制**：PDF/Word ≤30MB、图片 ≤10MB/张、单批 ≤50MB、单批 ≤10 张图片；
   学生端文件访问走 `/api/materials/[id]/file?k=签名`，未下发或课堂已结束时一律拒绝。
 - **schema 变更风险**：容器启动时 `docker/entrypoint.sh` 会执行
