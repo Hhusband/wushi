@@ -89,6 +89,12 @@ if [ "$MODE" = "sync" ]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------- 数据目录权限
+# uploads/ 是宿主机 bind mount，容器内 nextjs(uid 1001) 无法写入属于 admin-01 的默认 755 目录；
+# DSM 的 ACL 会让容器内 chmod 静默失败，所以在宿主机上授权（exports 同理）。
+nas "printf '%s\n' '$NAS_PASS' | sudo -S sh -c 'mkdir -p $NAS_DIR/uploads $NAS_DIR/exports && chmod 777 $NAS_DIR/uploads $NAS_DIR/exports'" >/dev/null 2>&1 || \
+  echo "!! 警告：未能设置 uploads/exports 权限（资料上传可能失败，请检查 sudo 密码）"
+
 # ---------------------------------------------------------------- 构建 + 重启
 # 构建前把当前运行镜像打个回滚标签，万一新版有问题可快速切回
 PREV_IMG="$(nas "printf '%s\n' '$NAS_PASS' | sudo -S $NAS_DOCKER inspect --format '{{.Image}}' $NAS_CONTAINER 2>/dev/null" || true)"

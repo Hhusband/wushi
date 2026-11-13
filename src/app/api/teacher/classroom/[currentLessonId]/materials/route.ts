@@ -13,6 +13,7 @@ import {
   SUPPORTED_EXT_HINT,
 } from "@/lib/uploads"
 import { emitClassroomUpdate } from "@/lib/socket-server"
+import { getActiveRound } from "@/lib/rounds"
 
 async function requireTeacher(request: Request, currentLessonId: string) {
   const token = extractToken(request)
@@ -87,6 +88,13 @@ export async function POST(
     })
     if (!round) return NextResponse.json({ error: "轮次不存在" }, { status: 400 })
     roundId = round.id
+  }
+
+  // 「上传后立即下发」但未指定轮次时，自动挂到当前进行中的轮次，
+  // 保证学生端按轮次分组时能看到该资料、教师端轮次时间线的资料数也对得上。
+  if (pushNow && !roundId) {
+    const activeRound = await getActiveRound(currentLessonId)
+    roundId = activeRound?.id ?? null
   }
 
   const classified = files.map((f) => ({ file: f, info: classifyFileName(f.name) }))

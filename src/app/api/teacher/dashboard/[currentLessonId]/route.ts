@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { toRoundDTO } from "@/lib/rounds"
+import { toRoundDTO, ensureFirstRound } from "@/lib/rounds"
 import { toMaterialDTO } from "@/lib/uploads"
 
 export async function GET(
@@ -15,6 +15,12 @@ export async function GET(
     include: { lesson: true },
   })
   if (!currentLesson) return NextResponse.json({ error: "课堂不存在" }, { status: 404 })
+
+  // 本次升级前启动的课堂（或历史遗留的 active 课堂）还没有轮次记录：
+  // 懒补建第 1 轮，保证教师端轮次时间线与学生端一致。
+  if (currentLesson.status === "active") {
+    await ensureFirstRound(currentLessonId).catch(() => null)
+  }
 
   const sessions = await prisma.studentSession.findMany({
     where: { currentLessonId },
