@@ -123,6 +123,22 @@ export default function DashboardPage() {
     }
   }
 
+  async function toggleAllowSubmit(next: boolean) {
+    if (!shownRound) return
+    try {
+      const res = await fetch(`/api/teacher/rounds/${shownRound.id}`, {
+        method: "PATCH",
+        headers: tokenHeader(true),
+        body: JSON.stringify({ allowSubmit: next }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "操作失败")
+      fetchDashboard()
+    } catch (e: any) {
+      window.alert(e.message || "操作失败")
+    }
+  }
+
   async function handleEndRound() {
     if (!activeRound) return
     if (!window.confirm(`确定结束「第${activeRound.seq}轮」讨论？结束后学生端将不能再发消息。`)) return
@@ -273,6 +289,22 @@ export default function DashboardPage() {
                 )}
                 {shownRound.allowSubmit === false && (
                   <p className="mt-1 text-xs text-amber-700">本轮关闭了「自动总结提交」，学生不会被 AI 结束</p>
+                )}
+                {shownRound.status === "active" && isActive && (
+                  <label className="mt-2 flex items-start gap-2 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={shownRound.allowSubmit !== false}
+                      onChange={(e) => toggleAllowSubmit(e.target.checked)}
+                    />
+                    <span>
+                      允许学生在说「没有了」后结束讨论并提交总结
+                      <span className="text-muted-foreground">
+                        （关掉则学生不会被 AI 结束，适合还要继续下一轮讨论）
+                      </span>
+                    </span>
+                  </label>
                 )}
               </div>
             )}

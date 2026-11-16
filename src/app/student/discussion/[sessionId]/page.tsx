@@ -203,7 +203,11 @@ export default function DiscussionPage() {
             <p className="truncate text-xs text-muted-foreground">
               {session ? session.groupName : ""}
               {session ? " · " : ""}
-              {session && session.status === "active" ? "讨论中" : "已结束"}
+              {session && session.status === "active"
+                ? "讨论中"
+                : session && session.status === "submitted"
+                  ? "已提交 · 等待老师"
+                  : "已结束"}
               {activeRound ? ` · 第${activeRound.seq}轮` : ""}
             </p>
           </div>
@@ -245,6 +249,13 @@ export default function DiscussionPage() {
             <p className="line-clamp-2 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">本轮问题：</span>
               {activeRound.question}
+            </p>
+          </div>
+        )}
+        {!canInteract && session?.status === "submitted" && (
+          <div className="mx-auto mt-2 max-w-6xl">
+            <p className="rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+              本轮已提交。老师发布下一轮讨论后，这里会自动恢复输入框，无需重新进入。
             </p>
           </div>
         )}
