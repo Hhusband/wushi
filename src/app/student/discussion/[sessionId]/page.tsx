@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { MaterialViewer } from "@/components/materials/material-viewer"
 import type { MaterialData, RoundData } from "@/types"
@@ -40,7 +40,6 @@ const btnStyle = {
 
 export default function DiscussionPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
-  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -52,6 +51,11 @@ export default function DiscussionPage() {
   const [viewerItems, setViewerItems] = useState<MaterialData[] | null>(null)
   const [showRoundInfo, setShowRoundInfo] = useState(false)
   const [showMaterials, setShowMaterials] = useState(false)
+  const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [ending, setEnding] = useState(false)
+  // 老师发布新一轮时给个短暂的提示
+  const [newRoundTip, setNewRoundTip] = useState<string | null>(null)
+  const prevActiveRoundRef = useRef<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sendingRef = useRef(false)
   const endingRef = useRef(false)
@@ -99,9 +103,22 @@ export default function DiscussionPage() {
 
   useEffect(() => {
     refresh()
-    const timer = setInterval(refresh, 8000)
+    const timer = setInterval(refresh, 5000)
     return () => clearInterval(timer)
   }, [refresh])
+
+  // 老师发布新一轮时给个短暂提示
+  useEffect(() => {
+    if (!activeRoundId) return
+    const prev = prevActiveRoundRef.current
+    prevActiveRoundRef.current = activeRoundId
+    if (prev && prev !== activeRoundId) {
+      const round = rounds.find((r) => r.id === activeRoundId)
+      setNewRoundTip(round ? `第${round.seq}轮讨论开始啦，继续发言吧` : "新一轮讨论开始啦，继续发言吧")
+      const t = setTimeout(() => setNewRoundTip(null), 6000)
+      return () => clearTimeout(t)
+    }
+  }, [activeRoundId, rounds])
 
   useEffect(() => {
     messagesEndRef.current && messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
@@ -133,7 +150,9 @@ export default function DiscussionPage() {
         setMessages((prev) => [...prev, data.aiResponse])
       }
       if (data.autoSubmitted) {
-        setTimeout(() => router.push(`/student/submission/${sessionId}`), 800)
+        // 本轮已自动提交：留在讨论页等待老师发布下一轮，不再跳走
+        if (DEBUG) console.log("[DiscussionPage] autoSubmitted，停留等待下一轮")
+        refresh()
       }
     } catch (err) {
       if (DEBUG) console.log("[DiscussionPage] send error:", err)
@@ -146,8 +165,28 @@ export default function DiscussionPage() {
   function handleEndDiscussion() {
     if (DEBUG) console.log("[DiscussionPage] handleEndDiscussion called")
     if (endingRef.current) return
+    setShowEndConfirm(true)
+  }
+
+  // 确认结束本轮并提交：提交后留在讨论页，等老师发布下一轮
+  async function handleConfirmEnd() {
+    if (endingRef.current) return
     endingRef.current = true
-    router.push(`/student/submission/${sessionId}`)
+    setEnding(true)
+    try {
+      const res = await fetch(`/api/student/session/${sessionId}/submit`, { method: "POST" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "提交失败")
+      }
+      setShowEndConfirm(false)
+      await refresh()
+    } catch (e: any) {
+      window.alert(e.message || "提交失败，请重试")
+    } finally {
+      setEnding(false)
+      endingRef.current = false
+    }
   }
 
   // 资料按轮次分组：本轮在前、往轮在后
@@ -255,7 +294,14 @@ export default function DiscussionPage() {
         {!canInteract && session?.status === "submitted" && (
           <div className="mx-auto mt-2 max-w-6xl">
             <p className="rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
-              本轮已提交。老师发布下一轮讨论后，这里会自动恢复输入框，无需重新进入。
+              本轮已提交 ✓ 停留在本页面等老师发布下一轮讨论即可，开始后这里会自动恢复输入。
+            </p>
+          </div>
+        )}
+        {newRoundTip && (
+          <div className="mx-auto mt-2 max-w-6xl">
+            <p className="rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700">
+              🎉 {newRoundTip}
             </p>
           </div>
         )}
@@ -320,7 +366,7 @@ export default function DiscussionPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSend()
                 }}
-                placeholder="输入你的想法..."
+                placeholder={canInteract ? "输入你的想法..." : "已提交，等待老师发布下一轮讨论…"}
                 disabled={loading || !canInteract}
               />
               <button
@@ -368,6 +414,42 @@ export default function DiscussionPage() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">{materialsPanel}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 结束本轮确认 */}
+      {showEndConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5">
+            <h2 className="text-base font-medium">确认结束本轮讨论？</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {activeRound ? `第${activeRound.seq}轮` : "本轮"}
+              讨论将结束，AI 会为你们生成讨论总结并提交给老师。
+              提交后你会留在本页面，老师发布下一轮讨论时自动回到讨论。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEndConfirm(false)}
+                onMouseDown={() => setShowEndConfirm(false)}
+                disabled={ending}
+                className={btnBase + " border border-input bg-background active:bg-accent"}
+                style={btnStyle}
+              >
+                再想想
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEnd}
+                onMouseDown={handleConfirmEnd}
+                disabled={ending}
+                className={btnBase + " bg-primary text-primary-foreground active:bg-primary/90"}
+                style={btnStyle}
+              >
+                {ending ? "提交中..." : "确认提交"}
+              </button>
+            </div>
           </div>
         </div>
       )}
