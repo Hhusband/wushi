@@ -58,7 +58,10 @@ export async function getActiveRound(currentLessonId: string): Promise<RoundRow 
 }
 
 /** 启动课堂时创建第 1 轮讨论（幂等） */
-export async function ensureFirstRound(currentLessonId: string): Promise<RoundRow> {
+export async function ensureFirstRound(
+  currentLessonId: string,
+  overrides?: { question?: string; requirements?: string; allowSubmit?: boolean }
+): Promise<RoundRow> {
   const existing = await prisma.discussionRound.findFirst({
     where: { currentLessonId, seq: 1 },
   })
@@ -70,15 +73,21 @@ export async function ensureFirstRound(currentLessonId: string): Promise<RoundRo
   })
   if (!cl) throw new Error("课堂不存在")
 
+  const question = (overrides?.question || "").trim() || cl.lesson.coreQuestion
+  const requirements =
+    overrides?.requirements !== undefined
+      ? overrides.requirements
+      : cl.lesson.discussionRequirements || ""
+
   return prisma.discussionRound.create({
     data: {
       currentLessonId,
       seq: 1,
       title: "第一轮讨论",
-      question: cl.lesson.coreQuestion,
-      requirements: cl.lesson.discussionRequirements || "",
+      question,
+      requirements,
       status: "active",
-      allowSubmit: true,
+      allowSubmit: overrides?.allowSubmit ?? true,
       startedAt: new Date(),
     },
   })

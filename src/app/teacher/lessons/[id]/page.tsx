@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { StartClassroomDialog } from "@/components/teacher/start-classroom-dialog"
 
 interface Lesson {
   id: string
@@ -26,6 +27,7 @@ export default function LessonDetailPage() {
   const router = useRouter()
   const [lesson, setLesson] = useState<Lesson | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showStartDialog, setShowStartDialog] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem("teacher_token")
@@ -44,29 +46,7 @@ export default function LessonDetailPage() {
       .finally(() => setLoading(false))
   }, [id, router])
 
-  async function handleStartClassroom() {
-    if (!lesson) return
-    const token = localStorage.getItem("teacher_token")
-    if (!token) return
 
-    const res = await fetch("/api/teacher/classroom/start", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        lessonId: lesson.id,
-        grade: lesson.grade,
-        className: lesson.className,
-      }),
-    })
-
-    const data = await res.json()
-    if (data.currentLesson) {
-      router.push(`/teacher/dashboard/${data.currentLesson.id}`)
-    }
-  }
 
   if (loading) {
     return (
@@ -144,11 +124,32 @@ export default function LessonDetailPage() {
             )}
 
             <div className="pt-4">
-              <Button onClick={handleStartClassroom}>启动课堂</Button>
+              <Button onClick={() => setShowStartDialog(true)}>启动课堂</Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                启动时会弹出第一轮讨论设置：可以调整本轮问题/要求、选择是否允许提交总结，并直接上传参考文件。
+              </p>
             </div>
           </CardContent>
         </Card>
       </main>
+
+      {showStartDialog && (
+        <StartClassroomDialog
+          lesson={{
+            id: lesson.id,
+            grade: lesson.grade,
+            className: lesson.className,
+            coreQuestion: lesson.coreQuestion,
+            discussionRequirements: lesson.discussionRequirements,
+            followUpQuestions: lesson.followUpQuestions,
+          }}
+          onClose={() => setShowStartDialog(false)}
+          onStarted={(currentLessonId) => {
+            setShowStartDialog(false)
+            router.push(`/teacher/dashboard/${currentLessonId}`)
+          }}
+        />
+      )}
     </div>
   )
 }
