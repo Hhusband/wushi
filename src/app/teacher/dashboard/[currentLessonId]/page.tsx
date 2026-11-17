@@ -28,6 +28,8 @@ export default function DashboardPage() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryByRound, setSummaryByRound] = useState<Record<string, string>>({})
   const [groupModal, setGroupModal] = useState<{ id: string; name: string } | null>(null)
+  const [briefing, setBriefing] = useState<string | null>(null)
+  const [briefingLoading, setBriefingLoading] = useState(false)
 
   const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([])
   const [chatInput, setChatInput] = useState("")
@@ -101,6 +103,23 @@ export default function DashboardPage() {
       setChatMessages((prev) => [...prev, { role: "assistant", content: "抱歉，AI助教暂时不可用。" }])
     } finally {
       setChatLoading(false)
+    }
+  }
+
+  async function handleBriefing() {
+    setBriefingLoading(true)
+    try {
+      const res = await fetch(`/api/teacher/briefing/${currentLessonId}`, {
+        headers: tokenHeader(false),
+        cache: "no-store",
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "生成失败")
+      setBriefing(json.report || "暂无简报")
+    } catch (e: any) {
+      window.alert(e.message || "生成失败")
+    } finally {
+      setBriefingLoading(false)
     }
   }
 
@@ -200,6 +219,9 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleBriefing} disabled={briefingLoading}>
+              {briefingLoading ? "生成中..." : "生成简报"}
+            </Button>
             <Button variant="outline" size="sm" onClick={fetchDashboard}>
               刷新数据
             </Button>
@@ -509,6 +531,48 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {briefing !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">课堂简报</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  基于当前全部小组的讨论实时数据生成（含整体概况 / 共性问题 / 重点关注 / 教学建议）。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBriefing(null)}
+                className="rounded border px-3 py-1 text-sm"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="whitespace-pre-wrap rounded-lg border bg-zinc-50 p-4 text-sm leading-relaxed">
+              {briefing}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleBriefing}
+                disabled={briefingLoading}
+                className="rounded border px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {briefingLoading ? "生成中..." : "重新生成"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBriefing(null)}
+                className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPublish && (
         <PublishRoundDialog
