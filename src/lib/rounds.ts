@@ -220,13 +220,17 @@ const ROUND_SUMMARY_PROMPT = `你是一位资深教研员，负责为 {{subject}
 本轮讨论问题：{{question}}
 {{requirementsLine}}
 
-请根据下面各组在本轮的发言，用中文输出，分四段（每段 1-3 句，总字数不超过 400 字）：
-【本轮概况】参与小组数、讨论活跃度、整体印象
+请根据下面各组在本轮的发言，用中文输出，分五段（总字数不超过 550 字）：
+【本轮概况】参与小组数、讨论活跃度、整体印象（1-2 句）
 【各组观点】按小组简述主要观点与依据（可合并相近的小组）
-【共性问题】本轮暴露的理解偏差、证据不足或需要澄清的概念
-【教学建议】教师下一步可以追问什么、需要补充哪类资料或讲解哪一点
+【共性问题】本轮暴露的理解偏差、证据不足或需要澄清的概念（3 条以内，每条一行）
+【重点关注】严格按以下两行格式，基于本轮真实发言点明组号和依据：
+- 表现优异的小组：第X组 - 亮点（引用了哪个具体观点/证据）
+- 需要关注的小组：第Y组 - 原因（如跑题、参与度低、理解偏差、发言过少）
+若某一类确实没有，写「暂无」。
+【教学建议】教师下一步可以追问什么、需要补充哪类资料或讲解哪一点（2-3 条）
 
-要求：具体、克制，只基于学生发言，不要编造。`
+要求：具体、克制，只基于学生发言，不要编造；组号必须与数据中的小组一致。`
 
 export interface RoundSummaryResult {
   summary: string
@@ -304,7 +308,7 @@ export async function generateRoundSummary(roundId: string): Promise<RoundSummar
 
   const summary = await chatSimple(systemPrompt, lines.join("\n"), {
     temperature: 0.5,
-    maxTokens: 900,
+    maxTokens: 1200,
   })
 
   await prisma.discussionRound.update({
